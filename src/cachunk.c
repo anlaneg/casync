@@ -12,6 +12,7 @@
 #include "def.h"
 #include "util.h"
 
+/*自fd加载一个chunk*/
 int ca_load_fd(int fd, ReallocBuffer *buffer) {
         uint64_t count = 0;
 
@@ -28,10 +29,12 @@ int ca_load_fd(int fd, ReallocBuffer *buffer) {
                 if (count >= CA_CHUNK_SIZE_LIMIT_MAX)
                         return -EBADMSG;
 
+                /*buffer容量扩大buffer_size*/
                 p = realloc_buffer_extend(buffer, BUFFER_SIZE);
                 if (!p)
                         return -ENOMEM;
 
+                /*自fd中读取buffer_size内容到buffer*/
                 l = read(fd, p, BUFFER_SIZE);
                 if (l < 0)
                         return -errno;
@@ -40,6 +43,7 @@ int ca_load_fd(int fd, ReallocBuffer *buffer) {
                 count += l;
 
                 if (l == 0)
+                	/*达到chunk结尾，退出*/
                         break;
         }
 
@@ -212,6 +216,7 @@ int ca_load_and_compress_fd(int fd, CaCompressionType compression_type, ReallocB
         return 0;
 }
 
+/*将长度为size的data内容写入到fd*/
 int ca_save_fd(int fd, const void *data, size_t size) {
         if (fd < 0)
                 return -EINVAL;

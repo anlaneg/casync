@@ -121,6 +121,7 @@ static const struct {
         { "all",              CA_FORMAT_WITH_MASK             },
 };
 
+/*按with_feature_map表中列出的内容，通过名称取对应的flag*/
 int ca_with_feature_flags_parse_one(const char *name, uint64_t *ret) {
         size_t i;
 
@@ -133,6 +134,7 @@ int ca_with_feature_flags_parse_one(const char *name, uint64_t *ret) {
         return -ENXIO;
 }
 
+/*标记位转字符串名称*/
 int ca_with_feature_flags_format(uint64_t features, char **ret) {
         char *s = NULL;
         size_t i;
@@ -142,25 +144,28 @@ int ca_with_feature_flags_format(uint64_t features, char **ret) {
                 return -EINVAL;
 
         /* We only format --with= and --without= flags here */
-        features &= CA_FORMAT_WITH_MASK;
+        features &= CA_FORMAT_WITH_MASK;/*检查with标记*/
 
         for (i = 0; i < ELEMENTSOF(with_feature_map); i++) {
                 uint64_t f;
 
                 if (features == 0)
+                	/*所有标记位均被处理*/
                         break;
 
                 f = with_feature_map[i].feature;
 
+                /*未开启此标记，则跳过*/
                 if ((features & f) != f)
                         continue;
 
+                /*开启了此标记，则其加入到s*/
                 if (!strextend(&s, s ? " " : "", with_feature_map[i].name, NULL)) {
                         free(s);
                         return -ENOMEM;
                 }
 
-                features &= ~f;
+                features &= ~f;/*清除此标记*/
         }
 
         assert(features == 0);
@@ -378,6 +383,7 @@ uint32_t ca_feature_flags_to_fat_attrs(uint64_t flags) {
         return f;
 }
 
+/*依据文件系统magic,返回对应的flags*/
 uint64_t ca_feature_flags_from_magic(statfs_f_type_t magic) {
 
         /* Returns the set of features we know a specific file system type provides. Ideally the kernel would let us

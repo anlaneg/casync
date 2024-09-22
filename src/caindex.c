@@ -28,11 +28,11 @@ struct CaIndex {
         CaIndexMode mode;
 
         int open_flags;
-        int fd;
+        int fd;/*path或temporary_path对应的fd*/
         mode_t make_mode;
 
-        char *path;
-        char *temporary_path;
+        char *path;/*index路径*/
+        char *temporary_path;/*临时路径*/
 
         bool wrote_eof;
 
@@ -194,6 +194,7 @@ static int ca_index_open_fd(CaIndex *i) {
         assert(i);
 
         if (i->fd >= 0)
+        	/*index已有fd,直接返回*/
                 return 0;
 
         switch (i->open_flags & O_ACCMODE) {
@@ -201,6 +202,7 @@ static int ca_index_open_fd(CaIndex *i) {
         case O_RDONLY:
 
                 if (!i->path)
+                	/*未指定path,无法处理*/
                         return -EUNATCH;
 
                 p = i->path;
@@ -211,6 +213,7 @@ static int ca_index_open_fd(CaIndex *i) {
 
                 if (!i->temporary_path) {
                         if (i->path) {
+                        		/*构造临时路径*/
                                 r = tempfn_random(i->path, &i->temporary_path);
                                 if (r < 0)
                                         return r;
@@ -221,18 +224,20 @@ static int ca_index_open_fd(CaIndex *i) {
                                 if (r < 0)
                                         return r;
 
+                                /*path也未指供，使用临时目录，构造临时路径*/
                                 if (asprintf(&i->temporary_path, "%s/%" PRIx64 ".caidx", d, random_u64()) < 0)
                                         return -ENOMEM;
                         }
                 }
 
-                p = i->temporary_path;
+                p = i->temporary_path;/*返回临时路径*/
                 break;
 
         default:
                 assert(false);
         }
 
+        /*打开p指向的路径*/
         i->fd = open(p, i->open_flags, 0666 & i->make_mode);
         if (i->fd < 0)
                 return -errno;
@@ -256,6 +261,7 @@ static int ca_index_write_head(CaIndex *i) {
         assert(i);
 
         if (!IN_SET(i->mode, CA_INDEX_WRITE, CA_INDEX_INCREMENTAL_WRITE))
+        		/*仅write mode处理*/
                 return 0;
         if (i->start_offset != 0)
                 return 0;
@@ -280,6 +286,7 @@ static int ca_index_write_head(CaIndex *i) {
 
         assert(i->cooked_offset == 0);
 
+        /*写入head*/
         r = loop_write(i->fd, &head, sizeof(head));
         if (r < 0)
                 return r;
@@ -322,8 +329,10 @@ static int ca_index_read_head(CaIndex *i) {
         assert(i);
 
         if (!IN_SET(i->mode, CA_INDEX_READ, CA_INDEX_INCREMENTAL_READ))
+        	/*仅处理read模式*/
                 return 0;
         if (i->start_offset != 0) /* already past the head */
+        	/*仅处理start_offset为0的情况*/
                 return 0;
 
         assert(i->cooked_offset == 0);
@@ -334,14 +343,18 @@ static int ca_index_read_head(CaIndex *i) {
         if (r == 0)
                 return -EAGAIN;
 
+        /*读取结构体head*/
         n = loop_read(i->fd, &head, sizeof(head));
         if (n < 0)
+        	/*读取失败，返回错误*/
                 return (int) n;
         if (n != sizeof(head))
+        	/*读取长度不足*/
                 return -EPIPE;
 
         if (le64toh(head.index.header.size) != sizeof(CaFormatIndex) ||
             le64toh(head.index.header.type) != CA_FORMAT_INDEX)
+        		/*header校验失败*/
                 return -EBADMSG;
 
         r = ca_feature_flags_are_normalized(le64toh(head.index.feature_flags));
@@ -350,6 +363,7 @@ static int ca_index_read_head(CaIndex *i) {
         if (r == 0)
                 return -EINVAL;
 
+        /*消息参数检查*/
         if (le64toh(head.index.chunk_size_min) < CA_CHUNK_SIZE_LIMIT_MIN ||
             le64toh(head.index.chunk_size_min) > CA_CHUNK_SIZE_LIMIT_MAX)
                 return -EBADMSG;
@@ -366,10 +380,12 @@ static int ca_index_read_head(CaIndex *i) {
               le64toh(head.index.chunk_size_avg) <= le64toh(head.index.chunk_size_max)))
                 return -EBADMSG;
 
+        /*head类型为format-type*/
         if (le64toh(head.table.size) != UINT64_MAX ||
             le64toh(head.table.type) != CA_FORMAT_TABLE)
                 return -EBADMSG;
 
+        /*offset更新到head后*/
         i->start_offset = i->cooked_offset = sizeof(head);
 
         i->feature_flags = le64toh(head.index.feature_flags);
@@ -387,14 +403,17 @@ int ca_index_open(CaIndex *i) {
         if (!i)
                 return -EINVAL;
 
+        /*打开i->fd*/
         r = ca_index_open_fd(i);
         if (r < 0)
                 return r;
 
+        /*自fd读取head*/
         r = ca_index_read_head(i);
         if (r < 0 && r != -EAGAIN)
                 return r;
 
+        /*向fd写head*/
         r = ca_index_write_head(i);
         if (r < 0)
                 return r;
@@ -609,6 +628,7 @@ int ca_index_set_position(CaIndex *i, uint64_t position) {
         if (q < p)
                 return -EINVAL;
 
+        /*跳到q对应的位置处*/
         if (lseek(i->fd, q, SEEK_SET) == (off_t) -1)
                 return -errno;
 
@@ -780,6 +800,7 @@ int ca_index_incremental_read(CaIndex *i, ReallocBuffer *buffer) {
         if (!p)
                 return -ENOMEM;
 
+        /*自i->raw_offset位置读取m字节的内容存入到p中*/
         n = pread(i->fd, p, m, i->raw_offset);
         if (n < 0) {
                 realloc_buffer_empty(buffer);

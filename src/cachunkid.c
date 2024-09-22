@@ -21,6 +21,7 @@ static int decode_char(char x) {
         return -EINVAL;
 }
 
+/*字符串形式的chunk id解析成CaChunkID*/
 CaChunkID* ca_chunk_id_parse(const char *v, CaChunkID *ret) {
         CaChunkID id;
         size_t i;
@@ -48,12 +49,14 @@ CaChunkID* ca_chunk_id_parse(const char *v, CaChunkID *ret) {
         return ret;
 }
 
+/*将id按16进制进行解释，并转为字符串，填入到v中*/
 char* ca_chunk_id_format(const CaChunkID *id, char v[CA_CHUNK_ID_FORMAT_MAX]) {
         size_t i;
 
         assert(id);
         assert(v);
 
+        /*将id按16进制进行解释，并转为字符串*/
         for (i = 0; i < sizeof(CaChunkID); i++) {
                 v[i*2] = encode_char(id->bytes[i] >> 4);
                 v[i*2+1] = encode_char(id->bytes[i] & 0xF);
@@ -86,10 +89,10 @@ int ca_chunk_id_make(CaDigest *digest, const void *p, size_t l, CaChunkID *ret) 
 }
 
 char* ca_chunk_id_format_path(
-                const char *prefix,
-                const CaChunkID *chunkid,
-                const char *suffix,
-                char buffer[]) {
+                const char *prefix/*前缀*/,
+                const CaChunkID *chunkid/*chunkid*/,
+                const char *suffix/*后缀*/,
+                char buffer[]/*format后的路径*/) {
 
         size_t n;
 
@@ -97,17 +100,23 @@ char* ca_chunk_id_format_path(
         assert(buffer);
 
         if (prefix) {
+        		/*填充前缀*/
                 n = strlen(prefix);
                 memcpy(buffer, prefix, n);
         } else
                 n = 0;
 
+        /*填写chunkid*/
         ca_chunk_id_format(chunkid, buffer + n + 4 + 1);
+        /*自chunkid中取其前4个字节*/
         memcpy(buffer + n, buffer + n + 4 + 1, 4);
+        /*单加一个'/'*/
         buffer[n + 4] = '/';
 
+        /*如果有需要，填充后缀*/
         if (suffix)
                 strcpy(buffer + n + 4 + 1 + CA_CHUNK_ID_FORMAT_MAX - 1, suffix);
 
+        /*返回填充好的buffer*/
         return buffer;
 }

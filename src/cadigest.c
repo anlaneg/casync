@@ -15,6 +15,7 @@ struct CaDigest {
         };
 };
 
+/*按类型初始化sha256/sha512*/
 void ca_digest_reset(CaDigest *d) {
         if (!d)
                 return;
@@ -44,6 +45,7 @@ void ca_digest_reset(CaDigest *d) {
                 break;
 
         default:
+        		/*未知类型*/
                 assert_not_reached("Unknown hash function");
         }
 }
@@ -54,6 +56,7 @@ int ca_digest_new(CaDigestType t, CaDigest **ret) {
         if (t < 0)
                 return -EINVAL;
         if (t >= _CA_DIGEST_TYPE_MAX)
+        	/*参数提供的type不正确*/
                 return -EOPNOTSUPP;
         if (!ret)
                 return -EINVAL;
@@ -64,6 +67,7 @@ int ca_digest_new(CaDigestType t, CaDigest **ret) {
 
         d->type = t;
 
+        /*初始化digest*/
         ca_digest_reset(d);
 
         *ret = d;
@@ -74,6 +78,7 @@ CaDigest *ca_digest_free(CaDigest *d) {
         return mfree(d);
 }
 
+/*计算p指向的内容，长度为l的buffer对应的摘要*/
 void ca_digest_write(CaDigest *d, const void *p, size_t l) {
         if (!d)
                 return;
@@ -97,6 +102,7 @@ void ca_digest_write(CaDigest *d, const void *p, size_t l) {
         }
 }
 
+/*读取摘要结果*/
 const void* ca_digest_read(CaDigest *d) {
         if (!d)
                 return NULL;
@@ -156,6 +162,7 @@ size_t ca_digest_type_size(CaDigestType t) {
         }
 }
 
+/*摘要生成算法列表*/
 static const char *const table[_CA_DIGEST_TYPE_MAX] = {
         [CA_DIGEST_SHA256] = "sha256",
         [CA_DIGEST_SHA512_256] = "sha512-256",
@@ -175,8 +182,10 @@ CaDigestType ca_digest_type_from_string(const char *name) {
                 return _CA_DIGEST_TYPE_INVALID;
 
         if (streq(name, "default"))
+        		/*使用默认摘要算法*/
                 return CA_DIGEST_DEFAULT;
 
+        /*按参数名称获取摘要算法*/
         for (t = 0; t < _CA_DIGEST_TYPE_MAX; t++)
                 if (streq(table[t], name))
                         return t;

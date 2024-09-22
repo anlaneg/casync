@@ -19,6 +19,7 @@ void* realloc_buffer_acquire(ReallocBuffer *b, size_t size) {
                 return NULL;
 
         if (size == 0) {
+        	/*size为0时*/
                 b->start = b->end = 0;
 
                 /* If a buffer of size 0 is requested, that's OK and not an error. On non-error we want to return
@@ -28,31 +29,39 @@ void* realloc_buffer_acquire(ReallocBuffer *b, size_t size) {
                 return b->data ?: b;
         }
         if (_unlikely_(size > REALLOC_BUFFER_MAX))
+        	/*超过申请的最大值*/
                 return NULL;
 
+        /*size_t绕回*/
         ne = b->start + size;
         if (_unlikely_(ne < b->start)) /* overflow? */
                 return NULL;
 
         if (ne <= b->allocated) {
+        		/*要求的大小，小于当前申请的大小，将end变更为ne,直接返回*/
                 b->end = ne;
                 return realloc_buffer_data(b);
         }
 
-        na = b->allocated * 2;
+        /*空间不足，扩容*/
+        na = b->allocated * 2;/*计划翻倍*/
         if (_unlikely_(na < b->allocated)) /* overflow? */
                 return NULL;
+        /*防止超限*/
         if (_unlikely_(na > REALLOC_BUFFER_MAX))
                 na = REALLOC_BUFFER_MAX;
 
+        /*按页对齐*/
         ns = MAX(na, size);
         ns = ALIGN_TO(ns, page_size());
 
         if (b->start == 0) {
+        	/*之前没有内容，直接realloc*/
                 p = realloc(b->data, ns);
                 if (!p)
                         return NULL;
         } else {
+        	/*之前有内容，采用melloc + memcpy，会比realloc能少copy一些*/
                 p = malloc(ns);
                 if (!p)
                         return NULL;
@@ -63,6 +72,7 @@ void* realloc_buffer_acquire(ReallocBuffer *b, size_t size) {
                 b->start = 0;
         }
 
+        /*初始化buffer*/
         b->data = p;
         b->end = size;
         b->allocated = ns;
@@ -124,10 +134,12 @@ void *realloc_buffer_extend(ReallocBuffer *b, size_t add) {
 
         old_size = realloc_buffer_size(b);
 
+        /*防止扩充后绕回*/
         new_size = old_size + add;
         if (_unlikely_(new_size < old_size)) /* overflow? */
                 return NULL;
 
+        /*将buffer扩充到new size*/
         p = realloc_buffer_acquire(b, new_size);
         if (!p)
                 return NULL;
@@ -238,18 +250,22 @@ int realloc_buffer_read_size(ReallocBuffer *b, int fd, size_t add) {
                 return -EINVAL;
 
         if (add == (size_t) -1 || add < BUFFER_SIZE)
+        		/*默认添加一个buffer size*/
                 add = BUFFER_SIZE;
 
+        /*使buffer增加add字节*/
         p = realloc_buffer_extend(b, add);
         if (!p)
                 return -ENOMEM;
 
+        /*自fd中读取增加的字节*/
         l = read(fd, p, add);
         if (l < 0) {
                 realloc_buffer_shorten(b, add);
                 return -errno;
         }
 
+        /*设置buffer终止位置*/
         realloc_buffer_shorten(b, add - l);
         return l > 0;
 }
@@ -281,10 +297,12 @@ int realloc_buffer_read_target(ReallocBuffer *b, int fd, size_t target_size) {
         for (;;) {
                 size_t c;
 
+                /*检查buffer size,如果内容长度已满足，则返回1*/
                 c = realloc_buffer_size(b);
                 if (c >= target_size)
                         return 1;
 
+                /*如果buffer size不足，先尝试读取target_size -c 增加buffer size*/
                 r = realloc_buffer_read_size(b, fd, target_size - c);
                 if (r <= 0)
                         return r;
@@ -320,6 +338,7 @@ void* realloc_buffer_donate(ReallocBuffer *b, void *p, size_t size) {
         if (realloc_buffer_size(b) > 0) {
                 void *ret;
 
+                /*在buffer后添加内容*/
                 ret = realloc_buffer_append(b, p, size);
                 if (!ret)
                         return NULL;
@@ -328,6 +347,7 @@ void* realloc_buffer_donate(ReallocBuffer *b, void *p, size_t size) {
                 return ret;
         }
 
+        /*内容不足，释放掉，直接指向要添加的内容*/
         free(b->data);
         b->data = p;
         b->start = 0;

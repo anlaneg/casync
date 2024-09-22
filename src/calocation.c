@@ -603,7 +603,7 @@ int ca_location_open(CaLocation *l) {
         return r;
 }
 
-int ca_location_id_make(CaDigest *digest, CaLocation *l, bool include_size, CaChunkID *ret) {
+int ca_location_id_make(CaDigest *digest, CaLocation *l, bool include_size/*摘要中是否包含size*/, CaChunkID *ret) {
         if (!digest)
                 return -EINVAL;
         if (!l)
@@ -616,12 +616,14 @@ int ca_location_id_make(CaDigest *digest, CaLocation *l, bool include_size, CaCh
 
         ca_digest_reset(digest);
 
+        /*更新摘要*/
         if (l->path)
                 ca_digest_write(digest, l->path, strlen(l->path));
 
         ca_digest_write_u8(digest, (uint8_t) l->designator);
         ca_digest_write_u64(digest, l->offset);
 
+        /*如果参数要求包含size,则摘要是加入size*/
         if (include_size && l->size != UINT64_MAX)
                 ca_digest_write_u64(digest, l->size);
 
@@ -636,6 +638,7 @@ int ca_location_id_make(CaDigest *digest, CaLocation *l, bool include_size, CaCh
         if (l->feature_flags != UINT64_MAX)
                 ca_digest_write_u64(digest, l->feature_flags);
 
+        /*读取摘要结果*/
         memcpy(ret, ca_digest_read(digest), sizeof(CaChunkID));
         return 0;
 }

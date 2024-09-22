@@ -36,6 +36,7 @@
 #include "udev-util.h"
 #endif
 
+/*由命令行--what指定的参数*/
 static enum arg_what {
         WHAT_ARCHIVE,
         WHAT_ARCHIVE_INDEX,
@@ -46,6 +47,7 @@ static enum arg_what {
 } arg_what = _WHAT_INVALID;
 static int arg_log_level = -1;
 static bool arg_verbose = false;
+/*由参数dry-run指明*/
 static bool arg_dry_run = false;
 static bool arg_exclude_nodump = true;
 static bool arg_exclude_submounts = false;
@@ -57,16 +59,24 @@ static bool arg_delete = true;
 static bool arg_undo_immutable = false;
 static bool arg_recursive = true;
 static bool arg_seed_output = true;
+/*命令行--store给定的参数，仅最后一个生效*/
 static char *arg_store = NULL;
+/*命令行--extra-store给定的参数，容许有多个*/
 static char **arg_extra_stores = NULL;
+/*命令行--seed给定的参数，容许有多个*/
 static char **arg_seeds = NULL;
+/*命令行--cache给定的参数，仅最后一个生效*/
 static char *arg_cache = NULL;
+/*命令行--cache-auto给定的参数*/
 static bool arg_cache_auto = false;
+/*命令行--chunk-size给定的参数，仅最后一个生效*/
 static size_t arg_chunk_size_min = 0;
 static size_t arg_chunk_size_avg = 0;
 static size_t arg_chunk_size_max = 0;
 static uint64_t arg_rate_limit_bps = UINT64_MAX;
+/*命令行--with给定的参数，解析所有flags,容许使用多次*/
 static uint64_t arg_with = 0;
+/*命令行--without给定的参数，解析所有without的flags,容许使用多次*/
 static uint64_t arg_without = 0;
 static uid_t arg_uid_shift = 0, arg_uid_range = 0x10000U;
 static bool arg_uid_shift_apply = false;
@@ -74,6 +84,7 @@ static bool arg_mkdir = true;
 static CaDigestType arg_digest = CA_DIGEST_DEFAULT;
 static CaCompressionType arg_compression = CA_COMPRESSION_DEFAULT;
 
+/*显示帮助信息*/
 static void help(void) {
         printf("%1$s [OPTIONS...] make [ARCHIVE|ARCHIVE_INDEX|BLOB_INDEX] [PATH]\n"
                "%1$s [OPTIONS...] extract [ARCHIVE|ARCHIVE_INDEX|BLOB_INDEX] [PATH]\n"
@@ -184,12 +195,16 @@ static void help(void) {
                program_invocation_short_name);
 }
 
+/*显示版本*/
 static void version(void) {
         printf("%s " PACKAGE_VERSION "\n",
                program_invocation_short_name);
 }
 
-static int parse_chunk_sizes(const char *v, size_t *ret_min, size_t *ret_avg, size_t *ret_max) {
+/*v参数共有三种格式：1。v=="auto",此时min,avg,max均为0；
+ * 2。v==$min:$avg:$max,此时按相应的格式进行设置
+ * 3。v=$avg,avg来源于参数，min,max均为0*/
+static int parse_chunk_sizes(const char *v/*命令行--chunk-size指定的参数*/, size_t *ret_min, size_t *ret_avg, size_t *ret_max) {
         uint64_t a, b, c;
         char *k;
         int r;
@@ -199,6 +214,7 @@ static int parse_chunk_sizes(const char *v, size_t *ret_min, size_t *ret_avg, si
         assert(ret_max);
 
         if (streq(v, "auto")) {
+        		/*均置为0*/
                 *ret_min = 0;
                 *ret_avg = 0;
                 *ret_max = 0;
@@ -208,16 +224,18 @@ static int parse_chunk_sizes(const char *v, size_t *ret_min, size_t *ret_avg, si
 
         k = strchr(v, ':');
         if (k) {
+        		/*v中包含':'，按格式采用两个':'将字符串可分为三部分，分别为min,avg,max*/
                 char *j, *p;
 
                 j = strchr(k+1, ':');
                 if (!j) {
+                		/*没有找到第二个':'号，报错*/
                         log_error("--chunk-size= requires either a single average chunk size or a triplet of minimum, average and maximum chunk size.");
                         return -EINVAL;
                 }
 
-                p = strndupa(v, k - v);
-                r = parse_size(p, &a);
+                p = strndupa(v, k - v);/*取minium对应的配置*/
+                r = parse_size(p, &a);/*转换minium对应的数值*/
                 if (r < 0)
                         return log_error_errno(r, "Can't parse minimum chunk size: %s", v);
                 if (a < CA_CHUNK_SIZE_LIMIT_MIN) {
@@ -225,8 +243,8 @@ static int parse_chunk_sizes(const char *v, size_t *ret_min, size_t *ret_avg, si
                         return -ERANGE;
                 }
 
-                p = strndupa(k + 1, j - k - 1);
-                r = parse_size(p, &b);
+                p = strndupa(k + 1, j - k - 1);/*取average对应的配置*/
+                r = parse_size(p, &b);/*转换average对应的数值*/
                 if (r < 0)
                         return log_error_errno(r, "Can't parse average chunk size: %s", v);
                 if (b < a) {
@@ -234,7 +252,7 @@ static int parse_chunk_sizes(const char *v, size_t *ret_min, size_t *ret_avg, si
                         return -EINVAL;
                 }
 
-                r = parse_size(j + 1, &c);
+                r = parse_size(j + 1, &c);/*转换max对应的数值*/
                 if (r < 0)
                         return log_error_errno(r, "Can't parse maximum chunk size: %s", v);
                 if (c < b) {
@@ -246,7 +264,7 @@ static int parse_chunk_sizes(const char *v, size_t *ret_min, size_t *ret_avg, si
                         return -ERANGE;
                 }
         } else {
-
+        		/*不包含':',为针对avg的单个配置,其它置为0*/
                 r = parse_size(v, &b);
                 if (r < 0)
                         return log_error_errno(r, "Can't parse average chunk size: %s", v);
@@ -263,6 +281,7 @@ static int parse_chunk_sizes(const char *v, size_t *ret_min, size_t *ret_avg, si
                 c = 0;
         }
 
+        /*完成以上两种情况的处理，返回*/
         *ret_min = a;
         *ret_avg = b;
         *ret_max = c;
@@ -270,9 +289,10 @@ static int parse_chunk_sizes(const char *v, size_t *ret_min, size_t *ret_avg, si
         return 0;
 }
 
+/*通过参数指定应用哪种操作*/
 static int parse_what_selector(const char *arg, enum arg_what *what) {
         if (streq(arg, "archive"))
-                *what = WHAT_ARCHIVE;
+                *what = WHAT_ARCHIVE;/*执行归档*/
         else if (streq(arg, "archive-index"))
                 *what = WHAT_ARCHIVE_INDEX;
         else if (streq(arg, "blob"))
@@ -307,6 +327,7 @@ static int dump_with_flags(void) {
                 uint64_t flag = UINT64_C(1) << i;
 
                 if (!(flag & SUPPORTED_WITH_MASK))
+                	/*忽略掉不支持的flags*/
                         continue;
 
                 r = ca_with_feature_flags_format(flag, &s);
@@ -322,6 +343,7 @@ static int dump_with_flags(void) {
 static int parse_argv(int argc, char *argv[]) {
 
         enum {
+        		/*从0x100开始，即从第二个字节的第一个数开始*/
                 ARG_STORE = 0x100,
                 ARG_EXTRA_STORE,
                 ARG_CHUNK_SIZE,
@@ -388,6 +410,7 @@ static int parse_argv(int argc, char *argv[]) {
         assert(argc >= 0);
         assert(argv);
 
+        /*检查是否有CASYNC_VERBOSE环境变量*/
         if (getenv_bool("CASYNC_VERBOSE") > 0)
                 arg_verbose = true;
 
@@ -396,14 +419,17 @@ static int parse_argv(int argc, char *argv[]) {
                 switch (c) {
 
                 case 'h':
+                	/*显示帮助*/
                         help();
                         return 0;
 
                 case ARG_VERSION:
+                	/*显示版本*/
                         version();
                         return 0;
 
                 case 'l':
+                		/*设置log level*/
                         r = set_log_level_from_string(optarg);
                         if (r < 0)
                                 return log_error_errno(r, "Failed to parse log level \"%s\": %m", optarg);
@@ -413,14 +439,17 @@ static int parse_argv(int argc, char *argv[]) {
                         break;
 
                 case 'v':
+                		/*指明verbose*/
                         arg_verbose = true;
                         break;
 
                 case 'n':
+                		/*指明dry run*/
                         arg_dry_run = true;
                         break;
 
                 case ARG_STORE:
+                		/*更新arg_store*/
                         r = free_and_strdup(&arg_store, optarg);
                         if (r < 0)
                                 return log_oom();
@@ -428,7 +457,7 @@ static int parse_argv(int argc, char *argv[]) {
                         break;
 
                 case ARG_EXTRA_STORE:
-
+                		/*将optarg加入到arg_extra_stores中*/
                         r = strv_extend(&arg_extra_stores, optarg);
                         if (r < 0)
                                 return log_oom();
@@ -436,7 +465,7 @@ static int parse_argv(int argc, char *argv[]) {
                         break;
 
                 case ARG_CHUNK_SIZE:
-
+                		/*设置arg_chunk_size_avg，更新min,max*/
                         r = parse_chunk_sizes(optarg,
                                               &arg_chunk_size_min,
                                               &arg_chunk_size_avg,
@@ -447,6 +476,7 @@ static int parse_argv(int argc, char *argv[]) {
                         break;
 
                 case ARG_SEED:
+                	/*将optarg加入到arg_seeds*/
                         r = strv_extend(&arg_seeds, optarg);
                         if (r < 0)
                                 return log_oom();
@@ -454,6 +484,7 @@ static int parse_argv(int argc, char *argv[]) {
                         break;
 
                 case ARG_CACHE:
+                	/*更新arg_cache*/
                         r = free_and_strdup(&arg_cache, optarg);
                         if (r < 0)
                                 return log_oom();
@@ -461,10 +492,12 @@ static int parse_argv(int argc, char *argv[]) {
                         break;
 
                 case 'c':
+                	/*置cache_auto为true*/
                         arg_cache_auto = true;
                         break;
 
                 case ARG_RATE_LIMIT_BPS:
+                	/*依据用户参数，设置arg_rate_limit_bps*/
                         r = parse_size(optarg, &arg_rate_limit_bps);
                         if (r < 0)
                                 return log_error_errno(r, "Unable to parse rate limit %s: %m", optarg);
@@ -474,6 +507,7 @@ static int parse_argv(int argc, char *argv[]) {
                         break;
 
                 case ARG_WITH: {
+                	/*指明需要打开的flag*/
                         uint64_t u;
 
                         if (streq(optarg, "help"))
@@ -488,6 +522,7 @@ static int parse_argv(int argc, char *argv[]) {
                 }
 
                 case ARG_WITHOUT: {
+                	/*指明不需要打开的flag*/
                         uint64_t u;
 
                         if (streq(optarg, "help"))
@@ -502,6 +537,7 @@ static int parse_argv(int argc, char *argv[]) {
                 }
 
                 case ARG_WHAT:
+                	/*按叁数解析执行哪种操作*/
                         r = parse_what_selector(optarg, &arg_what);
                         if (r <= 0)
                                 return r;
@@ -632,6 +668,7 @@ static int parse_argv(int argc, char *argv[]) {
                 }
 
                 case ARG_RECURSIVE:
+                	/*是否禁止递归*/
                         r = parse_boolean(optarg);
                         if (r < 0)
                                 return log_error_errno(r, "Failed to parse --recursive= parameter: %s", optarg);
@@ -640,6 +677,7 @@ static int parse_argv(int argc, char *argv[]) {
                         break;
 
                 case ARG_DIGEST: {
+                	/*指明摘要计算方法*/
                         CaDigestType t;
 
                         t = ca_digest_type_from_string(optarg);
@@ -651,6 +689,7 @@ static int parse_argv(int argc, char *argv[]) {
                 }
 
                 case ARG_COMPRESSION: {
+                	/*压缩算法选择*/
                         CaCompressionType cc;
 
                         cc = ca_compression_type_from_string(optarg);
@@ -676,12 +715,14 @@ static int parse_argv(int argc, char *argv[]) {
 
         /* Propagate some settings to helpers we fork off */
         if (arg_log_level >= 0) {
+        	/*更新casync_log_level环境变量*/
                 char buffer[DECIMAL_STR_MAX(int)];
                 snprintf(buffer, sizeof(buffer), "%d", arg_log_level);
                 (void) setenv("CASYNC_LOG_LEVEL", buffer, 1);
         }
 
         if (arg_verbose)
+        	/*更新casync_verbose环境变量*/
                 (void) putenv((char*) "CASYNC_VERBOSE=1");
         else
                 unsetenv("CASYNC_VERBOSE");
@@ -739,6 +780,8 @@ static int load_seeds_and_extra_stores(CaSync *s) {
 }
 
 static uint64_t combined_with_flags(uint64_t default_with_flags) {
+	/*如果没有指定--with参数，则使用default_with_flags,否则应用arg_with
+	 * 但需要考虑arg_without禁止掉的flags*/
         return (arg_with == 0 ? default_with_flags : arg_with) & ~arg_without;
 }
 
@@ -748,6 +791,7 @@ static int load_feature_flags(CaSync *s, uint64_t default_with_flags) {
 
         assert(s);
 
+        /*取用户指定的flags*/
         flags = combined_with_flags(default_with_flags);
 
         if (arg_exclude_nodump)
@@ -1172,40 +1216,45 @@ static int verb_make(int argc, char *argv[]) {
         } MakeOperation;
 
         MakeOperation operation = _MAKE_OPERATION_INVALID;
-        _cleanup_free_ char *input = NULL, *output = NULL;
+        _cleanup_free_ char *input = NULL/*输入路径*/, *output = NULL/*输出归档路径*/;
         _cleanup_(safe_close_nonstdp) int input_fd = -1;
         int r;
         _cleanup_(ca_sync_unrefp) CaSync *s = NULL;
         struct stat st;
 
+        /*最多2个参数*/
         if (argc > 3) {
                 log_error("A pair of output and input path/URL expected.");
                 return -EINVAL;
         }
 
+        /*参数1，指定归档输出路径*/
         if (argc > 1) {
                 output = ca_strip_file_url(argv[1]);
                 if (!output)
                         return log_oom();
         }
 
+        /*参数2，指定要归档的输入路径*/
         if (argc > 2) {
                 input = ca_strip_file_url(argv[2]);
                 if (!input)
                         return log_oom();
         }
 
+        /*依据what参数，设置operation*/
         if (arg_what == WHAT_ARCHIVE)
-                operation = MAKE_ARCHIVE;
+                operation = MAKE_ARCHIVE;/*文件归档*/
         else if (arg_what == WHAT_ARCHIVE_INDEX)
-                operation = MAKE_ARCHIVE_INDEX;
+                operation = MAKE_ARCHIVE_INDEX;/*索引归档*/
         else if (arg_what == WHAT_BLOB_INDEX)
-                operation = MAKE_BLOB_INDEX;
+                operation = MAKE_BLOB_INDEX;/*块设备/文件索引归档*/
         else if (arg_what != _WHAT_INVALID) {
                 log_error("\"make\" operation may only be combined with --what=archive, --what=archive-index or --what=blob-index.");
                 return -EINVAL;
         }
 
+        /*如果未指定operation,则依据output文件后缀来确定operation*/
         if (operation == _MAKE_OPERATION_INVALID && output && !streq(output, "-")) {
                 if (ca_locator_has_suffix(output, ".catar"))
                         operation = MAKE_ARCHIVE;
@@ -1219,6 +1268,7 @@ static int verb_make(int argc, char *argv[]) {
                 }
         }
 
+        /*如果未指定input,依据operation推断input为'.'*/
         if (!input && IN_SET(operation, MAKE_ARCHIVE, MAKE_ARCHIVE_INDEX)) {
                 input = strdup(".");
                 if (!input)
@@ -1226,6 +1276,7 @@ static int verb_make(int argc, char *argv[]) {
         }
 
         if (!input || streq(input, "-")) {
+        		/*输出来源于stdin*/
                 input_fd = STDIN_FILENO;
                 input = NULL;
         } else {
@@ -1233,34 +1284,39 @@ static int verb_make(int argc, char *argv[]) {
 
                 input_class = ca_classify_locator(input);
                 if (input_class < 0) {
+                		/*未分清input是哪种类型的path,报错*/
                         log_error("Failed to determine class of locator: %s", input);
                         return -EINVAL;
                 }
 
+                /*make行为时，input只接收普通path*/
                 if (input_class != CA_LOCATOR_PATH) {
                         log_error("Input must be local path: %s", input);
                         return -EINVAL;
                 }
 
+                /*input路径必须有效，可被open*/
                 input_fd = open(input, O_CLOEXEC|O_RDONLY|O_NOCTTY);
                 if (input_fd < 0)
                         return log_error_errno(errno, "Failed to open %s: %m", input);
         }
 
         if (fstat(input_fd, &st) < 0)
+        		/*无效path,取stat失败*/
                 return log_error_errno(errno, "Failed to stat input: %m");
 
         if (S_ISDIR(st.st_mode)) {
-
+        		/*路径为目录，如未指定operation,更改为归档*/
                 if (operation == _MAKE_OPERATION_INVALID)
                         operation = MAKE_ARCHIVE;
                 else if (!IN_SET(operation, MAKE_ARCHIVE, MAKE_ARCHIVE_INDEX)) {
+                		/*报错，input为目录时仅支持以下两种操作方式*/
                         log_error("Input is a directory, but attempted to make blob index. Refusing.");
                         return -EINVAL;
                 }
 
         } else if (S_ISREG(st.st_mode) || S_ISBLK(st.st_mode)) {
-
+        		/*给定路径为普通文件或者为块设备，则仅容许blob index操作*/
                 if (operation == _MAKE_OPERATION_INVALID)
                         operation = MAKE_BLOB_INDEX;
                 else if (operation != MAKE_BLOB_INDEX) {
@@ -1268,29 +1324,35 @@ static int verb_make(int argc, char *argv[]) {
                         return -EINVAL;
                 }
         } else {
+        		/*给定的path不满足要求，即不是目录，也不是块设备或普通文件*/
                 log_error("Input is a neither a directory, a regular file, nor a block device. Refusing.");
                 return -EINVAL;
         }
 
+        /*output给定为stdout,释放output*/
         if (streq_ptr(output, "-"))
                 output = mfree(output);
 
         if (operation == _MAKE_OPERATION_INVALID) {
+        		/*如果未指定operation,则报错*/
                 log_error("Failed to determine what to make. Use --what=archive, --what=archive-index or --what=blob-index.");
                 return -EINVAL;
         }
 
+        /*仅archive/archive_index支持cache*/
         if (!IN_SET(operation, MAKE_ARCHIVE_INDEX, MAKE_ARCHIVE) && (arg_cache_auto || arg_cache)) {
                 log_error("Caching only supported when archiving files trees.");
                 return -EOPNOTSUPP;
         }
 
         if (IN_SET(operation, MAKE_ARCHIVE_INDEX, MAKE_BLOB_INDEX)) {
+        		/*针对这两种操作，设置arg_store*/
                 r = set_default_store(output);
                 if (r < 0)
                         return r;
         }
 
+        /*当前为make操作，故创建CaSync*/
         s = ca_sync_new_encode();
         if (!s)
                 return log_oom();
@@ -1299,33 +1361,39 @@ static int verb_make(int argc, char *argv[]) {
         if (r < 0)
                 return r;
 
+        /*为casync设置log level*/
         if (arg_log_level != -1) {
                 r = ca_sync_set_log_level(s, arg_log_level);
                 if (r < 0)
                         return log_error_errno(r, "Failed to set log level: %m");
         }
 
+        /*为casync设置limit bps*/
         if (arg_rate_limit_bps != UINT64_MAX) {
                 r = ca_sync_set_rate_limit_bps(s, arg_rate_limit_bps);
                 if (r < 0)
                         return log_error_errno(r, "Failed to set rate limit: %m");
         }
 
+        /*更新base_fd*/
         r = ca_sync_set_base_fd(s, input_fd);
         if (r < 0)
                 return log_error_errno(r, "Failed to set sync base: %m");
         input_fd = -1;
 
         if (output) {
+        	/*设置输出文件对应的mode*/
                 r = ca_sync_set_make_mode(s, st.st_mode & 0666);
                 if (r < 0)
                         return log_error_errno(r, "Failed to set make permission mode: %m");
         }
 
         if (operation == MAKE_ARCHIVE) {
+        		/*设置归档相关参数*/
                 if (output)
                         r = ca_sync_set_archive_auto(s, output);
                 else
+                	/*未指明输出，输出到stdout*/
                         r = ca_sync_set_archive_fd(s, STDOUT_FILENO);
                 if (r < 0)
                         return log_error_errno(r, "Failed to set sync archive: %m");
@@ -1344,6 +1412,7 @@ static int verb_make(int argc, char *argv[]) {
                         return log_error_errno(r, "Failed to set store: %m");
         }
 
+        /*为s加载feature,flags相关的设置*/
         r = load_feature_flags(s, operation == MAKE_BLOB_INDEX ? 0 : SUPPORTED_WITH_MASK);
         if (r < 0)
                 return r;
@@ -1369,21 +1438,26 @@ static int verb_make(int argc, char *argv[]) {
                         return log_error_errno(r, "Failed to set cache: %m");
         }
 
+        /*向notify socket指明当前准备就绪*/
         (void) send_notify("READY=1");
 
         for (;;) {
                 if (quit) {
+                	/*全局quit被置为true,退出*/
                         log_info("Got exit signal, quitting.");
                         return -ESHUTDOWN;
                 }
 
+                /*执行同步*/
                 r = ca_sync_step(s);
                 if (r < 0)
                         return log_error_errno(r, "Failed to run synchronizer: %m");
 
+                /*按同步结果处理*/
                 switch (r) {
 
                 case CA_SYNC_FINISHED: {
+                		/*同步完成*/
                         CaChunkID digest;
                         char t[CA_CHUNK_ID_FORMAT_MAX];
 
@@ -1399,12 +1473,14 @@ static int verb_make(int argc, char *argv[]) {
                 }
 
                 case CA_SYNC_NEXT_FILE:
+                		/*开始同步新文件*/
                         r = verbose_print_path(s, "Packing");
                         if (r < 0)
                                 return r;
                         break;
 
                 case CA_SYNC_DONE_FILE:
+                		/*同步文件结束*/
                         r = verbose_print_path(s, "Packed");
                         if (r < 0)
                                 return r;
@@ -1429,6 +1505,7 @@ static int verb_make(int argc, char *argv[]) {
 
                 verbose_print_feature_flags(s);
 
+                /*显示处理中*/
                 if (arg_verbose)
                         progress();
         }
@@ -1758,6 +1835,7 @@ static int mtree_escape_full(const char *p, size_t l, char **ret) {
         if (!n)
                 return -ENOMEM;
 
+        /*解码path*/
         for (a = p, b = n; a < p + l; a++) {
 
                 if ((uint8_t) *a <= (uint8_t) ' ' ||
@@ -1794,10 +1872,12 @@ static int list_one_file(const char *arg0, CaSync *s, bool *toplevel_shown) {
         mode_t mode;
         int r;
 
+        /*自CaSync中解码mode*/
         r = ca_sync_current_mode(s, &mode);
         if (r < 0)
                 return log_error_errno(r, "Failed to query current mode: %m");
 
+        /*解码path*/
         r = ca_sync_current_path(s, &path);
         if (r < 0)
                 return log_error_errno(r, "Failed to query current path: %m");
@@ -1809,6 +1889,7 @@ static int list_one_file(const char *arg0, CaSync *s, bool *toplevel_shown) {
         if (streq(arg0, "list")) {
                 char ls_mode[LS_FORMAT_MODE_MAX];
 
+                /*显示mode及文件名称*/
                 printf("%s %s\n", ls_format_mode(mode, ls_mode), empty_to_dot(escaped));
 
                 if (!arg_recursive && *toplevel_shown) {
@@ -2843,6 +2924,7 @@ static int verb_mkdev(int argc, char *argv[]) {
 #endif
 
         if (argc > 3) {
+        		/*参数不大于3*/
                 log_error("An blob path/URL expected, possibly followed by a device or symlink name.");
                 return -EINVAL;
         }
@@ -2858,6 +2940,7 @@ static int verb_mkdev(int argc, char *argv[]) {
         if (argc > 2)
                 name = argv[2];
 
+        /*依据arg_what确认operation*/
         if (arg_what == WHAT_BLOB)
                 operation = MKDEV_BLOB;
         else if (arg_what == WHAT_BLOB_INDEX)
@@ -2941,6 +3024,7 @@ static int verb_mkdev(int argc, char *argv[]) {
         if (r < 0)
                 goto finish;
 
+        /*申请block device对象*/
         nbd = ca_block_device_new();
         if (!nbd) {
                 r = log_oom();
@@ -3975,16 +4059,21 @@ static int dispatch_verb(int argc, char *argv[]) {
         int r;
 
         if (argc < 1) {
+        	/*参数不足*/
                 log_error("Missing verb. (Invoke '%s --help' for a list of available verbs.)", program_invocation_short_name);
                 return -EINVAL;
         }
 
         if (streq(argv[0], "help")) {
+        	/*显示verbs帮助*/
                 help();
                 r = 0;
+         /*以下为各verb处理*/
         } else if (streq(argv[0], "make"))
+        		/*针对指定路径制作归档*/
                 r = verb_make(argc, argv);
         else if (streq(argv[0], "extract"))
+        		/*将指定归档解到给定的路径*/
                 r = verb_extract(argc, argv);
         else if (STR_IN_SET(argv[0], "list", "mtree", "stat"))
                 r = verb_list(argc, argv);
@@ -4010,19 +4099,24 @@ static int dispatch_verb(int argc, char *argv[]) {
         return r;
 }
 
+/*casync入口*/
 int main(int argc, char *argv[]) {
         int r;
 
         disable_sigpipe();
 
+        /*解析参数*/
         r = parse_argv(argc, argv);
         if (r <= 0)
                 goto finish;
 
+        /*安装退出信号*/
         install_exit_handler(NULL);
+        /*block以上exit信号处理*/
         block_exit_handler(SIG_UNBLOCK, NULL);
 
         r = dispatch_verb(argc - optind, argv + optind);
+        /*将以上信号处理置为default*/
         install_exit_handler(SIG_DFL);
 
 finish:

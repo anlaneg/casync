@@ -10,10 +10,12 @@
 typedef struct ReallocBuffer {
         void *data;
         size_t allocated;
-        size_t start;
-        size_t end;
+        size_t start;/*buffer可用的起始偏移*/
+        size_t end;/*buffer可用的终止偏移*/
 } ReallocBuffer;
 
+
+/*取buffer可用的起始地址*/
 static inline void *realloc_buffer_data(ReallocBuffer *buffer) {
         assert(buffer);
         assert(buffer->start <= buffer->end);
@@ -47,6 +49,7 @@ static inline size_t realloc_buffer_size(ReallocBuffer *buffer) {
         assert(buffer->start <= buffer->end);
         assert(buffer->end <= buffer->allocated);
 
+        /*返回buffer可用长度*/
         return buffer->end - buffer->start;
 }
 
@@ -73,7 +76,7 @@ int realloc_buffer_truncate(ReallocBuffer *b, size_t sz);
 int realloc_buffer_read_size(ReallocBuffer *b, int fd, size_t add);
 
 static inline int realloc_buffer_read(ReallocBuffer *b, int fd) {
-        return realloc_buffer_read_size(b, fd, (size_t) -1);
+        return realloc_buffer_read_size(b, fd, (size_t) -1/*强转成无符号数*/);
 }
 
 int realloc_buffer_read_full(ReallocBuffer *b, int fd, size_t limit);

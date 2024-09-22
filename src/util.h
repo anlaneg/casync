@@ -233,6 +233,7 @@ char *hexmem(const void *p, size_t l);
 bool filename_is_valid(const char *p);
 int tempfn_random(const char *p, char **ret);
 
+/*指定为NULL，或者字符串为空*/
 static inline bool isempty(const char *p) {
         return !p || !p[0];
 }
@@ -249,10 +250,13 @@ static inline const char *strnone(const char *p) {
 
 static inline bool streq_ptr(const char *a, const char *b) {
         if (!a && !b)
+        	/*均为NULL*/
                 return true;
         if (!a || !b)
+        	/*两者中，有一方为NULL*/
                 return false;
 
+        /*字符串相等比较*/
         return streq(a, b);
 }
 
@@ -352,6 +356,7 @@ _alloc_(2, 3) static inline void *realloc_multiply(void *p, size_t size, size_t 
 
 int xopendirat(int fd, const char *name, int flags, DIR **ret);
 
+/*检查p是否为'.'或者'..'*/
 static inline bool dot_or_dot_dot(const char *p) {
         if (!p)
                 return false;
@@ -433,6 +438,7 @@ static inline void safe_close_pair(int pair[2]) {
         pair[1] = safe_close(pair[1]);
 }
 
+/*比较字符串s与prefix,如果两者相等，返回s移除掉前缀prefix后的内容，否则返回NULL*/
 static inline char *startswith(const char *s, const char *prefix) {
         size_t l;
 
@@ -513,8 +519,10 @@ static inline size_t strlen_null(const char *s) {
         return strlen(s);
 }
 
+/*构建字符串数组*/
 #define STRV_MAKE(...) ((char**) ((const char*[]) { __VA_ARGS__, NULL }))
 
+/*构建字符串数组，且指定x指向第一个元素*/
 #define FOREACH_STRING(x, y, ...)                                       \
         for (char **_l = STRV_MAKE(({ x = y; }), ##__VA_ARGS__);        \
              x;                                                         \

@@ -19,7 +19,7 @@
 /* #define EBADMSG __LINE__ */
 
 struct CaStore {
-        char *root;
+        char *root;/*写对应的根路径,包含'/'符*/
         bool is_cache:1;
         bool mkdir_done:1;
         ReallocBuffer buffer;
@@ -97,6 +97,7 @@ int ca_store_set_path(CaStore *store, const char *path) {
         if (store->root)
                 return -EBUSY;
 
+        /*为结尾添加'/'符*/
         if (endswith(path, "/"))
                 store->root = strdup(path);
         else

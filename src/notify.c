@@ -22,6 +22,7 @@ int send_notify(const char *text) {
         if (isempty(text))
                 return 0;
 
+        /*取通知用env*/
         e = getenv("NOTIFY_SOCKET");
         if (!e)
                 return 0;
@@ -42,6 +43,7 @@ int send_notify(const char *text) {
         } else
                 strncpy(sa.un.sun_path, e, sizeof(sa.un.sun_path));
 
+        /*向对端socket发送通知*/
         n = sendto(fd, text, strlen(text), MSG_NOSIGNAL, &sa.sa, SOCKADDR_UN_LEN(sa.un));
         if (n < 0) {
                 r = -errno;

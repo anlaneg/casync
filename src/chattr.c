@@ -7,6 +7,7 @@
 #include "util.h"
 #include "chattr.h"
 
+/*取此fd对应的属性*/
 int read_attr_fd(int fd, unsigned *ret) {
         assert(fd >= 0);
         assert(ret);
@@ -51,12 +52,15 @@ int mask_attr_fd(int fd, unsigned value, unsigned mask) {
 
         r = read_attr_fd(fd, &old_attr);
         if (r < 0)
+        	/*取fd属性失败*/
                 return r;
 
+        /*设置新的关注属性*/
         new_attr = (old_attr & ~mask) | (value & mask);
         if (new_attr == old_attr)
                 return 0;
 
+        /*通过ioctl设置此fd的属性*/
         return write_attr_fd(fd, new_attr);
 }
 

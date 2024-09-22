@@ -77,12 +77,12 @@ typedef struct CaEncoderNode {
         statfs_f_type_t magic;
 
         /* For S_ISDIR */
-        struct dirent **dirents;
-        size_t n_dirents;
+        struct dirent **dirents;/*存储扫描的所有dirent*/
+        size_t n_dirents;/*dirents数组大小*/
         size_t dirent_idx;
 
         /* For S_ISLNK */
-        char *symlink_target;
+        char *symlink_target;/*link时填充target*/
 
         /* For S_ISBLK */
         uint64_t device_size;
@@ -151,19 +151,19 @@ typedef struct CaEncoderNode {
 
 typedef enum CaEncoderState {
         CA_ENCODER_INIT,
-        CA_ENCODER_ENTERED,
-        CA_ENCODER_ENTRY,
+        CA_ENCODER_ENTERED,/*进入文件夹*/
+        CA_ENCODER_ENTRY,/*对文件夹实体进行编码*/
         CA_ENCODER_IN_PAYLOAD,
         CA_ENCODER_FIRST_DIRENT,
         CA_ENCODER_NEXT_DIRENT,
-        CA_ENCODER_FILENAME,
+        CA_ENCODER_FILENAME,/*文件名已编码*/
         CA_ENCODER_GOODBYE,
         CA_ENCODER_FINALIZE,
         CA_ENCODER_EOF,
 } CaEncoderState;
 
 struct CaEncoder {
-        CaEncoderState state;
+        CaEncoderState state;/*encoder状态*/
 
         uint64_t feature_flags;
         uint64_t covering_feature_flags; /* feature flags the used file systems actually support */
@@ -198,7 +198,7 @@ struct CaEncoder {
         bool payload_digest_invalid:1;
         bool hardlink_digest_invalid:1;
 
-        bool want_archive_digest:1;
+        bool want_archive_digest:1;/*是否需要archive摘要*/
         bool want_payload_digest:1;
         bool want_hardlink_digest:1;
 };
@@ -379,14 +379,15 @@ int ca_encoder_set_base_fd(CaEncoder *e, int fd) {
         if (fstatfs(fd, &sfs) < 0)
                 return -errno;
 
+        /*只接收以下三种文件类型*/
         if (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode) && !S_ISBLK(st.st_mode))
                 return -ENOTTY;
 
         e->nodes[0] = (struct CaEncoderNode) {
                 .fd = fd,
-                .stat = st,
+                .stat = st,/*此fd统计信息*/
                 .device_size = UINT64_MAX,
-                .magic = sfs.f_type,
+                .magic = sfs.f_type,/*此文件系统类型*/
                 .acl_group_obj_permissions = UINT64_MAX,
                 .acl_default_user_obj_permissions = UINT64_MAX,
                 .acl_default_group_obj_permissions = UINT64_MAX,
@@ -459,14 +460,18 @@ static CaEncoderNode *ca_encoder_node_parent_of(CaEncoder *e, CaEncoderNode *n) 
         return e->nodes + idx - 1;
 }
 
+/*取当前待处理的dirent*/
 static const struct dirent *ca_encoder_node_current_dirent(CaEncoderNode *n) {
         assert(n);
 
+        /*当前无目录项，返回NULL*/
         if (n->n_dirents <= 0)
                 return NULL;
+        /*此目录已处理完成，返回NULL*/
         if (n->dirent_idx >= n->n_dirents)
                 return NULL;
 
+        /*取当前待处理的dirent*/
         return n->dirents[n->dirent_idx];
 }
 
@@ -480,6 +485,7 @@ static const char *ca_encoder_node_current_child_name(CaEncoderNode *n) {
         return de->d_name;
 }
 
+/*仅排除'.','..'两个特别文件项，其它文件均被认可*/
 static int scandir_filter(const struct dirent *de) {
         assert(de);
 
@@ -488,6 +494,7 @@ static int scandir_filter(const struct dirent *de) {
         return !dot_or_dot_dot(de->d_name);
 }
 
+/*按字每序进行排序*/
 static int scandir_compare(const struct dirent **a, const struct dirent **b) {
         assert(a);
         assert(b);
@@ -497,6 +504,7 @@ static int scandir_compare(const struct dirent **a, const struct dirent **b) {
         return strcmp((*a)->d_name, (*b)->d_name);
 }
 
+/*扫描此node下所有文件，并记录到n->dirents*/
 static int ca_encoder_node_read_dirents(CaEncoderNode *n) {
         int r;
 
@@ -509,12 +517,13 @@ static int ca_encoder_node_read_dirents(CaEncoderNode *n) {
         if (n->fd < 0)
                 return -EBADFD;
 
+        /*扫描n->fd对应的目录，将其下所有文件目录名称列表存入到n->dirents中*/
         r = scandirat(n->fd, ".", &n->dirents, scandir_filter, scandir_compare);
         if (r < 0)
                 return -errno;
 
         n->n_dirents = (size_t) r;
-        n->dirent_idx = 0;
+        n->dirent_idx = 0;/*刚完成扫描，此时还未处理，故指定为0*/
 
         return 1;
 }
@@ -615,10 +624,13 @@ static int ca_encoder_node_read_symlink(
                 return -EBADFD;
 
         if (!S_ISLNK(symlink->stat.st_mode))
+        	/*非link,直接返回*/
                 return 0;
+        /*已设置symlink target,直接返回*/
         if (symlink->symlink_target)
                 return 0;
 
+        /*填充此symlink target*/
         r = readlinkat_malloc(n->fd, de->d_name, &symlink->symlink_target);
         if (r < 0)
                 return r;
@@ -1731,21 +1743,26 @@ static int ca_encoder_open_child(CaEncoder *e, CaEncoderNode *n, const struct di
         assert(de);
 
         if (!S_ISDIR(n->stat.st_mode))
+        	/*当前node非目录*/
                 return -ENOTDIR;
         if (n->fd < 0)
+        	/*当前node未设置fd*/
                 return -EBADFD;
 
+        /*初始化child*/
         child = ca_encoder_init_child(e);
         if (!child)
                 return -E2BIG;
 
         if (IN_SET(de->d_type, DT_DIR, DT_REG)) {
+        	/*此目录项为普通文件或目录*/
                 shall_open = true;
                 have_stat = false;
 
                 if (de->d_type == DT_DIR)
                         open_flags |= O_DIRECTORY;
         } else {
+        		/*其它类型目录项，读取stat并进行检查*/
                 if (fstatat(n->fd, de->d_name, &child->stat, AT_SYMLINK_NOFOLLOW) < 0)
                         return -errno;
 
@@ -1757,6 +1774,7 @@ static int ca_encoder_open_child(CaEncoder *e, CaEncoderNode *n, const struct di
         }
 
         if (shall_open) {
+        	/*打开此dirent*/
                 child->fd = openat(n->fd, de->d_name, open_flags);
                 if (child->fd < 0)
                         return -errno;
@@ -1767,6 +1785,7 @@ static int ca_encoder_open_child(CaEncoder *e, CaEncoderNode *n, const struct di
                 }
         }
 
+    	/*设置magic*/
         if (child->stat.st_dev == n->stat.st_dev ||
             child->fd < 0)
                 child->magic = n->magic;
@@ -1779,6 +1798,7 @@ static int ca_encoder_open_child(CaEncoder *e, CaEncoderNode *n, const struct di
                 child->magic = sfs.f_type;
         }
 
+        /*设置child->symlink_target*/
         r = ca_encoder_node_read_symlink(n, de, child);
         if (r < 0)
                 return r;
@@ -1789,15 +1809,20 @@ static int ca_encoder_open_child(CaEncoder *e, CaEncoderNode *n, const struct di
 static int ca_encoder_enter_child(CaEncoder *e) {
         assert(e);
 
+        /*空间不足，不能再增加*/
         if (e->node_idx+1 >= e->n_nodes)
                 return -EINVAL;
+
+        /*此node未初始化，调用无效*/
         if (e->nodes[e->node_idx+1].stat.st_mode == 0)
                 return -EINVAL;
 
+        /*node_idx增加*/
         e->node_idx++;
         return 0;
 }
 
+/*node_index减少*/
 static int ca_encoder_leave_child(CaEncoder *e) {
         assert(e);
 
@@ -1880,6 +1905,7 @@ static int ca_encoder_node_shall_enumerate(CaEncoder *e, CaEncoderNode *n) {
                 return false;
 
         /* Exclude all virtual API file systems */
+        /*排除掉以下虚拟的文件系统*/
         if (IN_SET(n->magic,
                    BINFMTFS_MAGIC,
                    CGROUP2_SUPER_MAGIC,
@@ -1920,6 +1946,7 @@ static int ca_encoder_node_get_payload_size(CaEncoderNode *n, uint64_t *ret) {
         assert(n);
         assert(ret);
 
+        /*取文件大小*/
         if (S_ISREG(n->stat.st_mode)) {
                 *ret = n->stat.st_size;
                 return 0;
@@ -2103,7 +2130,7 @@ static int ca_encoder_step_node(CaEncoder *e, CaEncoderNode *n) {
                 if (r > 0) {
                         if (S_ISREG(n->stat.st_mode)) {
                                 /* The ENTRY record has been generated, now go for the payload. */
-                                ca_encoder_enter_state(e, CA_ENCODER_IN_PAYLOAD);
+                                ca_encoder_enter_state(e, CA_ENCODER_IN_PAYLOAD);/*转payload*/
                                 return ca_encoder_step_node(e, n);
                         }
 
@@ -2130,6 +2157,7 @@ static int ca_encoder_step_node(CaEncoder *e, CaEncoderNode *n) {
 
                 assert(S_ISREG(n->stat.st_mode) || S_ISBLK(n->stat.st_mode));
 
+                /*取文件实际大小*/
                 r = ca_encoder_node_get_payload_size(n, &size);
                 if (r < 0)
                         return r;
@@ -2165,17 +2193,20 @@ static int ca_encoder_step_node(CaEncoder *e, CaEncoderNode *n) {
 
                 assert(S_ISDIR(n->stat.st_mode));
 
+                /*扫描此node，收集其下对应的所有dirent*/
                 r = ca_encoder_node_read_dirents(n);
                 if (r < 0)
                         return r;
 
                 for (;;) {
+                		/*取当前待处理的dirent*/
                         de = ca_encoder_node_current_dirent(n);
                         if (!de) {
                                 ca_encoder_enter_state(e, CA_ENCODER_GOODBYE);
                                 return CA_ENCODER_DATA;
                         }
 
+                        /*打开de对应的child dirent*/
                         r = ca_encoder_open_child(e, n, de);
                         if (r < 0)
                                 return r;
@@ -2185,7 +2216,7 @@ static int ca_encoder_step_node(CaEncoder *e, CaEncoderNode *n) {
                         if (r < 0)
                                 return r;
                         if (r > 0) /* Yay, this one's relevant */
-                                break;
+                                break;/*遇到相关处理，跳出*/
 
                         /* Nope, not relevant to us, let's try the next one */
                         n->dirent_idx++;
@@ -2195,6 +2226,7 @@ static int ca_encoder_step_node(CaEncoder *e, CaEncoderNode *n) {
                 if (r < 0)
                         return r;
 
+                /*更新状态到filename*/
                 ca_encoder_enter_state(e, CA_ENCODER_FILENAME);
                 return CA_ENCODER_DATA;
         }
@@ -2312,10 +2344,12 @@ static int ca_encoder_get_payload_data(CaEncoder *e, CaEncoderNode *n, uint64_t 
         if (suggested_size != UINT64_MAX && k > suggested_size)
                 k = suggested_size;
 
+        /*准备buffer*/
         p = realloc_buffer_acquire(&e->buffer, k);
         if (!p)
                 return -ENOMEM;
 
+        /*自文件中分片读取内容，填充到buffer中*/
         m = pread(n->fd, p, k, e->payload_offset);
         if (m < 0) {
                 r = -errno;
@@ -3923,6 +3957,7 @@ int ca_encoder_set_uid_range(CaEncoder *e, uid_t u) {
         return 0;
 }
 
+/*设置want_archive_digest*/
 int ca_encoder_enable_archive_digest(CaEncoder *e, bool b) {
         if (!e)
                 return -EINVAL;

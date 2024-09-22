@@ -19,6 +19,7 @@ void exit_signal_handler(int signo) {
         quit = true;
 }
 
+/*收到以下信号sigint,sigterm,sighup后，置变量quit为true*/
 void install_exit_handler(void (*handler)(int)) {
         const struct sigaction sa = {
                 .sa_handler = handler ?: exit_signal_handler,
@@ -51,6 +52,7 @@ int sync_poll_sigset(CaSync *s) {
         return r;
 }
 
+/*忽略sigpipe信号*/
 void disable_sigpipe(void) {
         static const struct sigaction sa = {
                 .sa_handler = SIG_IGN,

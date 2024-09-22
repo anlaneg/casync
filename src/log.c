@@ -8,8 +8,10 @@
 #include "log.h"
 #include "util.h"
 
+/*参数指明的日志级别*/
 static int cached_log_level = -1;
 
+/*由字符串取log level*/
 static int level_from_string(const char *str) {
         if (STR_IN_SET(str, "emerg", "emergency", "0"))
                 return LOG_EMERG;
@@ -45,6 +47,7 @@ static int get_log_level(void) {
         return cached_log_level;
 }
 
+/*返回当前生效的log level*/
 void set_log_level(int level) {
         cached_log_level = level;
 }
@@ -52,10 +55,12 @@ void set_log_level(int level) {
 int set_log_level_from_string(const char *str) {
         int level;
 
+        /*解析level*/
         level = level_from_string(str);
         if (level < 0)
                 return level;
 
+        /*设置log level*/
         cached_log_level = level;
         return level;
 }

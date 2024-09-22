@@ -47,7 +47,7 @@ struct CaRemote {
 
         /* char *base_url; */
         char *index_url;
-        char *archive_url;
+        char *archive_url;/*远端归档用url*/
         char *wstore_url; /* The "primary" store, where we write to */
         char **rstore_urls; /* Additional, "secondary" stores we check */
 
@@ -94,6 +94,7 @@ struct CaRemote {
         CaCompressionType compression_type;
 };
 
+/*构造CaRemote*/
 CaRemote* ca_remote_new(void) {
         CaRemote *rr;
 

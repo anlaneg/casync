@@ -14,19 +14,24 @@ static bool ca_is_definitely_path(const char *s) {
         /* We consider ".", ".." and everything starting with either "/" or "./" a file system path. */
 
         if (s[0] == '/')
+        	/*绝对路径*/
                 return true;
 
         if (s[0] == '.') {
                 if (s[1] == 0)
+                	/*遇到'.'*/
                         return true;
 
                 if (s[1] == '/')
+                	/*遇到'./'*/
                         return true;
 
+                /*遇到'..'*/
                 if (s[1] == '.' && s[2] == 0)
                         return true;
         }
 
+        /*其它情况*/
         return false;
 }
 
@@ -47,18 +52,24 @@ bool ca_is_url(const char *s) {
                 return false;
 
         if (!strchr(URL_PROTOCOL_FIRST, s[0]))
+        	/*首字每需要以小写开头*/
                 return false;
 
+        /*后面的字每需要小写+数字+‘+./'*/
         n = 1 + strspn(s + 1, URL_PROTOCOL_CHARSET);
 
+        /*然后必须是'://'*/
         e = startswith(s + n, "://");
         if (!e)
                 return false;
 
+        /*取之后非预期内容*/
         k = strspn(e, HOSTNAME_CHARSET "@:[]");
         if (k <= 0)
+        	/*首字符即非预期，url无效*/
                 return false;
 
+        /*其它位置的非预期，只能是以下内容*/
         if (!IN_SET(e[k], '/', ';', '?', 0))
                 return false;
 
@@ -104,14 +115,18 @@ bool ca_is_ssh_path(const char *s) {
 
 CaLocatorClass ca_classify_locator(const char *s) {
         if (isempty(s))
+        	/*空串,则为无效的class*/
                 return _CA_LOCATOR_CLASS_INVALID;
 
         if (ca_is_url(s))
+        	/*s是url*/
                 return CA_LOCATOR_URL;
 
         if (ca_is_ssh_path(s))
+        		/*ssh路径*/
                 return CA_LOCATOR_SSH;
 
+        /*普通位置*/
         return CA_LOCATOR_PATH;
 }
 
@@ -125,17 +140,20 @@ char *ca_strip_file_url(const char *p) {
 
         e = startswith(p, "file://");
         if (!e)
-                return strdup(p);
+                return strdup(p);/*不以file开头*/
 
         if (*e == '/')
+        		/*以file:///方式开头*/
                 goto unescape;
 
         e = startswith(e, "localhost/");
         if (e) {
+        		/*回退到'/'*/
                 e --;
                 goto unescape;
         }
 
+        /*返回地址*/
         return strdup(p);
 
 unescape:

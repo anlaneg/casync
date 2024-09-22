@@ -40,6 +40,7 @@ struct CaBlockDevice {
         dev_t devnum;
 };
 
+/*创建blockdevice*/
 CaBlockDevice *ca_block_device_new(void) {
         CaBlockDevice *d;
 
@@ -324,26 +325,31 @@ int ca_block_device_open(CaBlockDevice *d) {
                         if (i >= NBD_MAX)
                                 return r;
 
-                        if (asprintf(&path, "/dev/nbd%u", i) < 0)
+                        if (asprintf(&path, "/dev/nbd%u", i/*设备编号*/) < 0)
                                 return -ENOMEM;
 
+                        /*尝试打开此设备*/
                         d->device_fd = open(path, O_CLOEXEC|O_RDWR|O_NONBLOCK|O_NOCTTY);
                         if (d->device_fd < 0) {
+                        		/*打开失败*/
                                 free(path);
                                 r = -errno;
                                 goto fail;
                         }
 
+                        /*尝试获取设备stat*/
                         if (fstat(d->device_fd, &st) < 0) {
                                 r = -errno;
                                 goto fail;
                         }
 
+                        /*此设备非block设备，退出*/
                         if (!S_ISBLK(st.st_mode)) {
                                 r = -ENOTBLK;
                                 goto fail;
                         }
 
+                        /*为nbd设置socket fd*/
                         if (ioctl(d->device_fd, NBD_SET_SOCK, d->socket_fd[1]) >= 0) {
                                 d->device_path = path;
                                 free_device_path = true;
@@ -357,6 +363,7 @@ int ca_block_device_open(CaBlockDevice *d) {
                         if (!IN_SET(r, -EBUSY, -EINVAL))
                                 goto fail;
 
+                        /*尝试下一个设备*/
                         d->device_fd = safe_close(d->device_fd);
                         i++;
                 }
@@ -616,6 +623,7 @@ int ca_block_device_test_nbd(const char *name) {
         if (!name)
                 return -EINVAL;
 
+        /*尝试匹配/dev/nbd*/
         n = strspn(name, "/");
         if (n < 1)
                 return 0;

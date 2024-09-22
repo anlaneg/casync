@@ -573,10 +573,12 @@ int ca_seed_get(CaSeed *s,
                 _cleanup_(safe_closep) int fd = -1;
                 ReallocBuffer buffer = {};
 
+                /*在s->cache_fd中打开combined*/
                 fd = openat(s->cache_fd, combined, O_RDONLY|O_CLOEXEC|O_NOCTTY|O_NOFOLLOW);
                 if (fd < 0)
                         return log_debug_errno(errno, "Failed to read from seed file %s: %m", combined);
 
+                /*将fd内容填充到buffer中*/
                 r = realloc_buffer_read_full(&buffer, fd, 1024U*1024U);
                 if (r < 0)
                         return r;
@@ -584,6 +586,7 @@ int ca_seed_get(CaSeed *s,
                 /* Safety check: let's make sure there's no embedded NUL byte */
                 r = realloc_buffer_memchr(&buffer, 0);
                 if (r >= 0)
+                		/*buffer中包含'\0'*/
                         return -EINVAL;
                 if (r != -ENXIO)
                         return r;

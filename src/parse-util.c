@@ -37,7 +37,7 @@ int parse_size(const char *t, uint64_t *size) {
         assert(t);
         assert(size);
 
-        n_entries = ELEMENTSOF(table);
+        n_entries = ELEMENTSOF(table);/*table元素数*/
 
         p = t;
         do {
@@ -46,11 +46,14 @@ int parse_size(const char *t, uint64_t *size) {
                 char *e;
                 unsigned i;
 
+                /*跳前导的空字符*/
                 p += strspn(p, WHITESPACE);
 
                 if (*p == '-')
+                	/*不能以‘-’开头*/
                         return -ERANGE;
 
+                /*转换为数字*/
                 errno = 0;
                 l = strtoull(p, &e, 10);
                 if (errno > 0)
@@ -58,11 +61,13 @@ int parse_size(const char *t, uint64_t *size) {
                 if (e == p)
                         return -EINVAL;
 
+                /*遇到'.'*/
                 if (*e == '.') {
                         e++;
 
                         /* strtoull() itself would accept space/+/- */
                         if (*e >= '0' && *e <= '9') {
+                        	/*只能是数字，且为10进制*/
                                 unsigned long long l2;
                                 char *e2;
 
@@ -77,11 +82,14 @@ int parse_size(const char *t, uint64_t *size) {
                         }
                 }
 
+                /*跳空字符*/
                 e += strspn(e, WHITESPACE);
+                /*确定单位*/
                 for (i = start_pos; i < n_entries; i++)
                         if (startswith(e, table[i].suffix))
                                 break;
 
+                /*未找到合适的单位，报错*/
                 if (i >= n_entries)
                         return -EINVAL;
 
@@ -92,6 +100,7 @@ int parse_size(const char *t, uint64_t *size) {
                 if (tmp > ULLONG_MAX - r)
                         return -ERANGE;
 
+                /*将结果合入到r中*/
                 r += tmp;
                 if ((unsigned long long) (uint64_t) r != r)
                         return -ERANGE;
@@ -102,6 +111,7 @@ int parse_size(const char *t, uint64_t *size) {
 
         } while (*p);
 
+        /*设置内容*/
         *size = r;
 
         return 0;

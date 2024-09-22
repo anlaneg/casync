@@ -9,6 +9,7 @@
 /* #define EINVAL __LINE__ */
 
 int ca_origin_new(CaOrigin **ret) {
+		/*创建caorigin对象*/
         CaOrigin *origin;
 
         if (!ret)
@@ -82,7 +83,7 @@ int ca_origin_put(CaOrigin *origin, CaLocation *location) {
                 return -ENOMEM;
 
         origin->others[origin->n_items-1] = ca_location_ref(location);
-        origin->n_items++;
+        origin->n_items++;/*增加item数目*/
         origin->n_bytes += location->size;
 
         return 0;

@@ -97,10 +97,12 @@ static int fill_stat(CaSync *s, struct stat *stbuf) {
         assert(s);
         assert(stbuf);
 
+        /*自CaSync中解码出mode*/
         r = ca_sync_current_mode(s, &mode);
         if (r < 0)
                 return log_error_errno(r, "Failed to get current mode: %m");
 
+        /*解码uid,gid,mtime,size*/
         (void) ca_sync_current_uid(s, &uid);
         (void) ca_sync_current_gid(s, &gid);
         (void) ca_sync_current_mtime(s, &mtime);
@@ -110,6 +112,7 @@ static int fill_stat(CaSync *s, struct stat *stbuf) {
         if (S_ISBLK(mode) || S_ISCHR(mode))
                 (void) ca_sync_current_rdev(s, &rdev);
 
+        /*利用解码数据填充stat*/
         *stbuf = (struct stat) {
                 .st_mode = mode,
                 .st_nlink = S_ISDIR(mode) ? 2 : 1,
@@ -582,6 +585,7 @@ static int casync_listxattr(const char *path, char *list, size_t size) {
         return (int) k;
 }
 
+/*fuse对应的操作函数集*/
 static const struct fuse_operations ops = {
         .init      = casync_init,
         .getattr   = casync_getattr,
@@ -710,6 +714,7 @@ int ca_fuse_run(CaSync *s, const char *what, const char *where, bool do_mkdir) {
                 }
         }
 
+        /*注册文件操作ops*/
         errno = 0;
         fuse = fuse_new(fc, NULL, &ops, sizeof(ops), s);
         if (!fuse) {

@@ -22,6 +22,7 @@
 
 #define HOLE_MIN 4096
 
+/*向fd中写入长度为l的数据p*/
 int loop_write(int fd, const void *p, size_t l) {
 
         if (fd < 0)
@@ -237,6 +238,7 @@ int loop_write_with_holes(int fd, const void *p, size_t l, uint64_t *ret_punched
         return 0;
 }
 
+/*自fd中读取l长度，将读取到的内容话置在p中*/
 ssize_t loop_read(int fd, void *p, size_t l) {
         ssize_t sum = 0;
 
@@ -441,6 +443,7 @@ char *hexmem(const void *p, size_t l) {
         return r;
 }
 
+/*检查是否为合法的文件名称*/
 bool filename_is_valid(const char *p) {
         const char *e;
 
@@ -477,17 +480,20 @@ int tempfn_random(const char *p, char **ret) {
          *         /foo/bar/.#waldobaa2a261115984a9
          */
 
-        fn = strrchr(p, '/');
-        fn = fn ? fn + 1 : p;
+        fn = strrchr(p, '/');/*指向最后一个'/'*/
+        fn = fn ? fn + 1 : p;/*指向文件*/
         if (!filename_is_valid(fn))
                 return -EINVAL;
 
+        /*来个t*/
         t = new(char, strlen(p) + 2 + 16 + 1);
         if (!t)
                 return -ENOMEM;
 
+        /*填充t,生成例如：/foo/bar/.#waldo*/
         x = stpcpy(stpcpy(mempcpy(t, p, fn - p), ".#"), fn);
 
+        /*生成随机数u64,并将其按16进制展开，再输出为字符串*/
         u = random_u64();
         for (i = 0; i < 16; i++) {
                 *(x++) = hexchar(u & 0xF);
@@ -624,11 +630,13 @@ char *strjoin_real(const char *x, ...) {
         return r;
 }
 
+/*依据mod显示 设备类型，权限位*/
 char* ls_format_mode(mode_t m, char ret[LS_FORMAT_MODE_MAX]) {
 
         if (m == (mode_t) -1)
                 return NULL;
 
+        /*显示设备类型*/
         switch (m & S_IFMT) {
 
         case S_IFSOCK:
@@ -663,8 +671,11 @@ char* ls_format_mode(mode_t m, char ret[LS_FORMAT_MODE_MAX]) {
                 return NULL;
         }
 
+        /*显示user r权限位*/
         ret[1] = m & 0400 ? 'r' : '-';
+        /*显示user w权限位*/
         ret[2] = m & 0200 ? 'w' : '-';
+        /*显示user执行权限位*/
         ret[3] = (m & S_ISUID) ? (m & 0100 ? 's' : 'S') : (m & 0100 ? 'x' : '-');
 
         ret[4] = m & 0040 ? 'r' : '-';
@@ -853,13 +864,16 @@ int readlinkat_malloc(int fd, const char *p, char **ret) {
                 if (!c)
                         return -ENOMEM;
 
+                /*在fd中读取p对应的符号链接*/
                 n = readlinkat(fd, p, c, l-1);
                 if (n < 0) {
+                	/*读取link失败，例如p并非link*/
                         r = -errno;
                         free(c);
                         return r;
                 }
 
+                /*buffer足够，返回link结果*/
                 if ((size_t) n < l-1) {
                         c[n] = 0;
                         *ret = c;
@@ -899,6 +913,7 @@ size_t strv_length(char **l) {
         return n;
 }
 
+/*将value 压到l指定的list中*/
 int strv_push(char ***l, char *value) {
         char **c;
         unsigned n, m;
@@ -908,7 +923,7 @@ int strv_push(char ***l, char *value) {
         if (!value)
                 return 0;
 
-        n = strv_length(*l);
+        n = strv_length(*l);/*取strv长度*/
 
         /* Increase and check for overflow */
         m = n + 2;
@@ -938,6 +953,7 @@ int strv_consume(char ***l, char *value) {
         return r;
 }
 
+/*向strv类型的变量l中添加一个新的元素value*/
 int strv_extend(char ***l, const char *value) {
         char *v;
 
@@ -972,6 +988,7 @@ int xopendirat(int fd, const char *name, int flags, DIR **ret) {
 }
 
 void progress(void) {
+		/*显示速度用的字符标记*/
         static const char slashes[] = {
                 '-',
                 '\\',
@@ -984,17 +1001,20 @@ void progress(void) {
         struct timespec now;
         static uint64_t now_nsec;
 
+        /*取当前时间*/
         assert(clock_gettime(CLOCK_MONOTONIC, &now) >= 0);
         now_nsec = timespec_to_nsec(now);
 
+        /*时间过短，不刷新，确保0.25s刷新一次，即40cps*/
         if (last_nsec + 250000000 > now_nsec)
                 return;
 
         last_nsec = now_nsec;
 
+        /*显示本轮slash*/
         fputc(slashes[i % ELEMENTSOF(slashes)], stderr);
-        fputc('\b', stderr);
-        fflush(stderr);
+        fputc('\b', stderr);/*退格*/
+        fflush(stderr);/*flush*/
 
         i++;
 }
@@ -1136,6 +1156,7 @@ size_t page_size(void) {
         return pgsz;
 }
 
+/*按bool类型解析v字符串*/
 int parse_boolean(const char *v) {
         if (!v)
                 return -EINVAL;
@@ -1148,6 +1169,7 @@ int parse_boolean(const char *v) {
         return -EINVAL;
 }
 
+/*按bool类型提取环境变量*/
 int getenv_bool(const char *p) {
         const char *e;
 
@@ -1342,18 +1364,24 @@ static int getenv_tmp_dir(const char **ret_path) {
         FOREACH_STRING(n, "TMPDIR", "TEMP", "TMP") {
                 const char *e;
 
+                /*按环境变量名称取值*/
                 e = secure_getenv(n);
                 if (!e)
                         continue;
+
+                /*给定的路径必面为绝对路径*/
                 if (!path_is_absolute(e)) {
                         r = -ENOTDIR;
                         goto next;
                 }
+
+                /*路径必须安全*/
                 if (!path_is_safe(e)) {
                         r = -EPERM;
                         goto next;
                 }
 
+                /*路径必须为目录*/
                 r = is_dir(e, true);
                 if (r < 0)
                         goto next;
@@ -1362,45 +1390,50 @@ static int getenv_tmp_dir(const char **ret_path) {
                         goto next;
                 }
 
+                /*采用此路径*/
                 *ret_path = e;
                 return 1;
 
         next:
                 /* Remember first error, to make this more debuggable */
                 if (ret >= 0)
-                        ret = r;
+                        ret = r;/*记录首个错误，尝试下一个*/
         }
 
         if (ret < 0)
                 return ret;
 
-        *ret_path = NULL;
+        *ret_path = NULL;/*未查找到路径*/
         return ret;
 }
 
-static int tmp_dir_internal(const char *def, const char **ret) {
+static int tmp_dir_internal(const char *def/*默认值*/, const char **ret) {
         const char *e;
         int r, k;
 
         assert(def);
         assert(ret);
 
+        /*自环境变量中提取dir*/
         r = getenv_tmp_dir(&e);
         if (r > 0) {
                 *ret = e;
                 return 0;
         }
 
+        /*环境变量查找失败，回退到考虑默认值*/
         k = is_dir(def, true);
         if (k == 0)
                 k = -ENOTDIR;
         if (k < 0)
                 return r < 0 ? r : k;
 
+        /*default可用*/
         *ret = def;
         return 0;
 }
 
+/*取临时目录，如果环境变量未指定，则使用默认值/var/tmp*/
 int var_tmp_dir(const char **ret) {
 
         /* Returns the location for "larger" temporary files, that is backed by physical storage if available, and thus
@@ -1422,20 +1455,25 @@ int tmp_dir(const char **ret) {
 bool path_is_safe(const char *p) {
 
         if (isempty(p))
+        	/*空串返回false*/
                 return false;
 
         if (dot_or_dot_dot(p))
+        	/*对于'.','..'返回false*/
                 return false;
 
         if (startswith(p, "../") || endswith(p, "/..") || strstr(p, "/../"))
+        		/*以'../'开头或者以/../结尾，或者中间包含'..'的返回false*/
                 return false;
 
         if (strlen(p)+1 > PATH_MAX)
+        	/*路径过长*/
                 return false;
 
         return true;
 }
 
+/*路径path必面为dir,follow为true时，容许link展开*/
 int is_dir(const char* path, bool follow) {
         struct stat st;
         int r;
@@ -1460,15 +1498,19 @@ int free_and_strdup(char **p, const char *s) {
         /* Replaces a string pointer with an strdup()ed new string, possibly freeing the old one. */
 
         if (streq_ptr(*p, s))
+        	/**p与s相等，不变更*/
                 return 0;
 
         if (s) {
+        	/*s不为NULL情况，复制其内容*/
                 t = strdup(s);
                 if (!t)
                         return -ENOMEM;
         } else
+        	/*指明为NULL*/
                 t = NULL;
 
+        /*完成内容更替*/
         free(*p);
         *p = t;
 

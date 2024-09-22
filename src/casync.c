@@ -47,8 +47,8 @@ typedef enum CaCacheState {
 } CaCacheState;
 
 struct CaSync {
-        CaDirection direction;
-        uint64_t start_nsec;
+        CaDirection direction;/*两种方向，编码&解码*/
+        uint64_t start_nsec;/*记录同步开始时间*/
 
         CaEncoder *encoder;
         CaDecoder *decoder;
@@ -65,7 +65,7 @@ struct CaSync {
         uint64_t next_chunk_size;
         bool next_chunk_valid;
 
-        CaStore *wstore;
+        CaStore *wstore;/*写store*/
         CaStore **rstores;
         size_t n_rstores;
         CaStore *cache_store;
@@ -87,16 +87,16 @@ struct CaSync {
         CaOrigin *current_cache_origin;
         CaLocation *current_cache_start_location;
 
-        int base_fd;
+        int base_fd;/*用户指定的input_fd*/
         int boundary_fd;
-        int archive_fd;
+        int archive_fd;/*归档目标fd*/
 
         char *base_path, *temporary_base_path;
         char *boundary_path;
-        char *archive_path, *temporary_archive_path;
+        char *archive_path, *temporary_archive_path/*临时归档路径*/;
 
         mode_t base_mode;
-        mode_t make_mode;
+        mode_t make_mode;/*make的路径文件mode*/
 
         ReallocBuffer buffer;
         ReallocBuffer index_buffer;
@@ -110,8 +110,8 @@ struct CaSync {
         bool archive_eof;
         bool remote_index_eof;
 
-        int log_level;
-        size_t rate_limit_bps;
+        int log_level;/*用户指定的log级别*/
+        size_t rate_limit_bps;/*bps速率*/
 
         uint64_t feature_flags;
         uint64_t feature_flags_mask;
@@ -146,7 +146,7 @@ struct CaSync {
         uid_t uid_range; /* uid_range == 0 means "full range" */
 
         uint64_t chunk_size_min;
-        uint64_t chunk_size_avg;
+        uint64_t chunk_size_avg;/*平均*/
         uint64_t chunk_size_max;
 
         CaCompressionType compression_type;
@@ -157,6 +157,7 @@ struct CaSync {
 
 #define CA_SYNC_IS_STARTED(s) ((s)->start_nsec != 0)
 
+/*初始化CaSync对象*/
 static CaSync *ca_sync_new(void) {
         CaSync *s;
 
@@ -184,6 +185,7 @@ static CaSync *ca_sync_new(void) {
         return s;
 }
 
+/*创建encode类型的CaSync*/
 CaSync *ca_sync_new_encode(void) {
         CaSync *s;
 
@@ -513,6 +515,7 @@ CaSync *ca_sync_unref(CaSync *s) {
         return mfree(s);
 }
 
+/*设置s->log_level*/
 int ca_sync_set_log_level(CaSync *s, int log_level) {
         if (!s)
                 return -EINVAL;
@@ -522,6 +525,7 @@ int ca_sync_set_log_level(CaSync *s, int log_level) {
         return 0;
 }
 
+/*设置s->rate_limit_bps*/
 int ca_sync_set_rate_limit_bps(CaSync *s, uint64_t rate_limit_bps) {
         if (!s)
                 return -EINVAL;
@@ -723,6 +727,7 @@ int ca_sync_set_index_auto(CaSync *s, const char *locator) {
         return ca_sync_set_index_remote(s, locator);
 }
 
+/*更新s->base_fd,此值设置要求早与提及的其它几个变量*/
 int ca_sync_set_base_fd(CaSync *s, int fd) {
         if (!s)
                 return -EINVAL;
@@ -730,10 +735,13 @@ int ca_sync_set_base_fd(CaSync *s, int fd) {
                 return -EINVAL;
 
         if (s->base_fd >= 0)
+        	/*base_fd已设置*/
                 return -EBUSY;
         if (s->base_mode != (mode_t) -1)
+        	/*base_mode已设置*/
                 return -EBUSY;
         if (s->base_path)
+        	/*base_path已设置*/
                 return -EBUSY;
         if (s->boundary_fd >= 0)
                 return -EBUSY;
@@ -793,9 +801,11 @@ int ca_sync_set_make_mode(CaSync *s, mode_t m) {
         if (m & ~0666)
                 return -EINVAL;
         if (s->direction != CA_SYNC_ENCODE)
+        	/*必须为encode方向*/
                 return -ENOTTY;
 
         if (s->make_mode != (mode_t) -1)
+        	/*make mode已设置*/
                 return -EBUSY;
 
         s->make_mode = m;
@@ -896,7 +906,7 @@ int ca_sync_set_archive_fd(CaSync *s, int fd) {
         if (s->remote_archive)
                 return -EBUSY;
 
-        s->archive_fd = fd;
+        s->archive_fd = fd;/*设置归档fd*/
         return 0;
 }
 
@@ -923,6 +933,7 @@ int ca_sync_set_archive_path(CaSync *s, const char *path) {
 
         assert(s->direction == CA_SYNC_DECODE);
 
+        /*打开输出位置，指明归档fd*/
         s->archive_fd = open(path, O_RDONLY|O_CLOEXEC|O_NOCTTY);
         if (s->archive_fd < 0)
                 return -errno;
@@ -961,7 +972,7 @@ int ca_sync_set_archive_remote(CaSync *s, const char *url) {
         return 0;
 }
 
-int ca_sync_set_archive_auto(CaSync *s, const char *locator) {
+int ca_sync_set_archive_auto(CaSync *s, const char *locator/*输出位置*/) {
         CaLocatorClass c;
 
         if (!s)
@@ -969,13 +980,16 @@ int ca_sync_set_archive_auto(CaSync *s, const char *locator) {
         if (!locator)
                 return -EINVAL;
 
+        /*确定位置分类*/
         c = ca_classify_locator(locator);
         if (c < 0)
                 return -EINVAL;
 
         if (c == CA_LOCATOR_PATH)
+        	/*归档到指定位置（本端）*/
                 return ca_sync_set_archive_path(s, locator);
 
+        /*归档到远端位置*/
         return ca_sync_set_archive_remote(s, locator);
 }
 
@@ -992,6 +1006,7 @@ int ca_sync_set_store_path(CaSync *s, const char *path) {
         if (s->remote_wstore)
                 return -EBUSY;
 
+        /*初始化s->wstore*/
         s->wstore = ca_store_new();
         if (!s->wstore)
                 return -ENOMEM;
@@ -1305,15 +1320,21 @@ static int ca_sync_start(CaSync *s) {
         assert(s);
 
         if (CA_SYNC_IS_STARTED(s))
+        	/*此函数已执行，同步已启动，返回*/
                 return 0;
 
         if (s->direction == CA_SYNC_ENCODE && s->archive_path && s->archive_fd < 0) {
+        		/* encode情况下，指明了archive_path,未指明archive_fd,则先生成临时归档路径，
+        		 * 再利用临时归档路径，产生s->archive_fd
+        		**/
                 if (!s->temporary_archive_path) {
+                		/*利用归档路径，生成临时归档路径*/
                         r = tempfn_random(s->archive_path, &s->temporary_archive_path);
                         if (r < 0)
                                 return r;
                 }
 
+                /*打开临时归档路径，产生归档fd*/
                 s->archive_fd = open(s->temporary_archive_path, O_WRONLY|O_CLOEXEC|O_NOCTTY|O_CREAT|O_EXCL, s->make_mode & 0666);
                 if (s->archive_fd < 0) {
                         s->temporary_archive_path = mfree(s->temporary_archive_path);
@@ -1336,6 +1357,7 @@ static int ca_sync_start(CaSync *s) {
                         return r;
                 }
 
+                /*将s->base_fd传递给s->encoder*/
                 r = ca_encoder_set_base_fd(s->encoder, s->base_fd);
                 if (r < 0) {
                         s->encoder = ca_encoder_unref(s->encoder);
@@ -1610,7 +1632,7 @@ static int ca_sync_start(CaSync *s) {
         }
 
         s->cache_state = ca_sync_use_cache(s) ? CA_SYNC_CACHE_CHECK : CA_SYNC_CACHE_OFF;
-        s->start_nsec = now(CLOCK_MONOTONIC);
+        s->start_nsec = now(CLOCK_MONOTONIC);/*记录同步开启的时间*/
 
         return 1;
 }
@@ -2299,6 +2321,7 @@ static bool ca_sync_shall_seed(CaSync *s) {
         assert(s);
 
         if (s->direction != CA_SYNC_DECODE)
+        		/*非decode返回false*/
                 return false;  /* only run the seeds when decoding */
         if (s->n_seeds == 0) /* no point in bothering if there are no seeds */
                 return false;
@@ -2791,6 +2814,7 @@ static int ca_sync_remote_prefetch(CaSync *s) {
         if (!s->index)
                 return CA_SYNC_POLL;
         if (s->direction != CA_SYNC_DECODE)
+        		/*非decode自此返回*/
                 return CA_SYNC_POLL;
         if (!s->remote_wstore)
                 return CA_SYNC_POLL;
@@ -2866,6 +2890,7 @@ static int ca_sync_remote_push_index(CaSync *s) {
         if (!s->index)
                 return CA_SYNC_POLL;
         if (s->direction != CA_SYNC_ENCODE)
+        		/*非encode自此返回*/
                 return CA_SYNC_POLL;
         if (s->remote_index_eof)  /* Already fully written? */
                 return CA_SYNC_POLL;
@@ -2876,6 +2901,7 @@ static int ca_sync_remote_push_index(CaSync *s) {
         if (r == 0)
                 return CA_SYNC_POLL;
 
+        /*读取index文件内容到index_buffer*/
         r = ca_index_incremental_read(s->index, &s->index_buffer);
         if (r == -EAGAIN)
                 return CA_SYNC_POLL;
@@ -3151,6 +3177,7 @@ static int ca_sync_propagate_index_flags(CaSync *s) {
          * seeds and remotes. */
 
         if (s->direction != CA_SYNC_DECODE)
+        	/*如果当前方向不为decode，则直接返回*/
                 return CA_SYNC_POLL;
 
         if (!s->index || s->index_flags_propagated) /* The flags/chunk size is already propagated */
@@ -3192,32 +3219,40 @@ static int ca_sync_propagate_index_flags(CaSync *s) {
         return CA_SYNC_STEP;
 }
 
+/**/
 int ca_sync_step(CaSync *s) {
         int r;
 
         if (!s)
                 return -EINVAL;
 
+        /*仅执行一次*/
         r = ca_sync_start(s);
         if (r < 0)
                 return r;
 
+        /*仅decode执行*/
         r = ca_sync_propagate_index_flags(s);
         if (r != CA_SYNC_POLL)
+        	/*函数执行出错，返回*/
                 return r;
 
+        /*仅decode执行*/
         r = ca_sync_seed_step(s);
         if (r != CA_SYNC_POLL)
                 return r;
 
+        /*仅decode执行*/
         r = ca_sync_remote_prefetch(s);
         if (r != CA_SYNC_POLL)
                 return r;
 
+        /*仅encode执行*/
         r = ca_sync_remote_push_index(s);
         if (r != CA_SYNC_POLL)
                 return r;
 
+        /*仅encode执行*/
         r = ca_sync_remote_push_chunk(s);
         if (r != CA_SYNC_POLL)
                 return r;
